@@ -31,9 +31,11 @@ private:
   vk::raii::Context                context;
   vk::raii::Instance               instance =       nullptr;
   vk::raii::DebugUtilsMessengerEXT debugMessenger = nullptr;
+  vk::raii::SurfaceKHR             surface =        nullptr;
   vk::raii::PhysicalDevice         physicalDevice = nullptr;
   vk::raii::Device                 device =         nullptr;
   vk::raii::Queue                  graphicsQueue =  nullptr;
+  vk::raii::Queue                  presentQueue =   nullptr;
 
   GLFWwindow* window = nullptr;
 
@@ -55,6 +57,7 @@ private:
   void initVulkan() {
     createInstance();
     setupDebugMessenger();
+    createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
   }
@@ -154,6 +157,14 @@ private:
     debugMessenger = instance.createDebugUtilsMessengerEXT(debugUtilsMessengerCreateInfoEXT);
   }
 
+  void createSurface() {
+    VkSurfaceKHR _surface;
+    if (glfwCreateWindowSurface(*instance, window, nullptr, &_surface) != 0) {
+      throw std::runtime_error("failed to create window surface!");
+    }
+    surface = vk::raii::SurfaceKHR(instance, _surface);
+  }
+
   void pickPhysicalDevice() {
     auto devices = instance.enumeratePhysicalDevices();
 
@@ -194,16 +205,43 @@ private:
   }
 
   void createLogicalDevice() {
+    // index of first queue family with graphics support
     std::vector<vk::QueueFamilyProperties> queueFamilyProperties = physicalDevice.getQueueFamilyProperties();
 
-    // this was not in the guide
-    auto graphicsQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, [](auto const &qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
+    // get first index of qfp with graphics support & check if it supports presentation
+    auto graphicsQueueFamilyProperty = std::ranges::find_if(queueFamilyProperties, [](const auto &qfp) { return (qfp.queueFlags & vk::QueueFlagBits::eGraphics) != static_cast<vk::QueueFlags>(0); });
     uint32_t graphicsIndex =           static_cast<uint32_t>(std::distance(queueFamilyProperties.begin(), graphicsQueueFamilyProperty));
+    uint32_t presentIndex =            physicalDevice.getSurfaceSupportKHR(graphicsIndex, *surface) ? graphicsIndex : static_cast<uint32_t>(queueFamilyProperties.size());
     float queuePriority =              0.5f;
 
-    vk::PhysicalDeviceFeatures deviceFeatures;
+    // card doesn't support presentation
+    if (presentIndex == queueFamilyProperties.size()) {
+      // look for another card that supports graphics and presentation
+      for (size_t i = 0; i < queueFamilyProperties.size(); i++) {
+        if ((queueFamilyProperties[i].queueFlags & vk::QueueFlagBits::eGraphics) && physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), *surface)) {
+          graphicsIndex = static_cast<uint32_t>(i);
+          presentIndex  = graphicsIndex;
+          break;
+        }
+      }
+      // no card supports both
+      if (presentIndex == queueFamilyProperties.size()) {
+        // look for a card that supports only presentation
+        for (size_t i = 0; i < queueFamilyProperties.size(); i++) {
+          if (physicalDevice.getSurfaceSupportKHR(static_cast<uint32_t>(i), *surface)) {
+            presentIndex = static_cast<uint32_t>( i );
+            break;
+          }
+        }
+      }
+    }
+
+    if ((graphicsIndex == queueFamilyProperties.size()) || (presentIndex == queueFamilyProperties.size())) {
+      throw std::runtime_error("Could not find a queue for graphics or present -> terminating");
+    }
 
     // Create a chain of feature structures
+    // old way shown here: https://docs.vulkan.org/tutorial/latest/03_Drawing_a_triangle/01_Presentation/00_Window_surface.html
     vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
       {},                              // vk::PhysicalDeviceFeatures2
       { .dynamicRendering = true },    // dynamic rendering from vulkan 1.3
@@ -226,6 +264,7 @@ private:
 
     device =        vk::raii::Device(physicalDevice, deviceCreateInfo);
     graphicsQueue = vk::raii::Queue(device, graphicsIndex, 0);
+    presentQueue =  vk::raii::Queue(device, presentIndex, 0);
   }
 
   void mainLoop() {
@@ -235,6 +274,7 @@ private:
   }
 
   void cleanup() {
+    surface = nullptr; // to avoid a SEGFAULT at DestroySurfaceKHR
     glfwDestroyWindow(window);
     glfwTerminate();
   }
