@@ -5,6 +5,10 @@
 #include <stdexcept>
 #include <cstdlib>
 
+#include <cstdint>   // Necessary for uint32_t
+#include <limits>    // Necessary for std::numeric_limits
+#include <algorithm> // Necessary for std::clamp
+
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
 
@@ -36,6 +40,11 @@ private:
   vk::raii::Device                 device =         nullptr;
   vk::raii::Queue                  graphicsQueue =  nullptr;
   vk::raii::Queue                  presentQueue =   nullptr;
+  vk::raii::SwapchainKHR           swapChain =      nullptr;
+
+  std::vector<vk::Image> swapChainImages;
+  vk::Format             swapChainImageFormat = vk::Format::eUndefined;
+  vk::Extent2D           swapChainExtent;
 
   GLFWwindow* window = nullptr;
 
@@ -60,6 +69,7 @@ private:
     createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+    createSwapChain();
   }
 
   void createInstance() {
@@ -267,6 +277,70 @@ private:
     presentQueue =  vk::raii::Queue(device, presentIndex, 0);
   }
 
+  void createSwapChain() {
+    auto surfaceCapabilities = physicalDevice.getSurfaceCapabilitiesKHR(surface);
+    auto minImageCount =       std::max(3u, surfaceCapabilities.minImageCount);
+    auto surfaceFormat =       chooseSwapSurfaceFormat(physicalDevice.getSurfaceFormatsKHR(surface));
+    auto extent =              chooseSwapExtent(surfaceCapabilities);
+
+    minImageCount = (surfaceCapabilities.maxImageCount > 0 && minImageCount > surfaceCapabilities.maxImageCount) ? surfaceCapabilities.maxImageCount : minImageCount;
+
+    vk::SwapchainCreateInfoKHR swapChainCreateInfo {
+      .flags =            vk::SwapchainCreateFlagsKHR(),
+      .surface =          surface,
+      .minImageCount =    minImageCount,
+      .imageFormat =      surfaceFormat.format,
+      .imageColorSpace =  surfaceFormat.colorSpace,
+      .imageExtent =      extent,
+      .imageArrayLayers = 1,
+      .imageUsage =       vk::ImageUsageFlagBits::eColorAttachment,
+      .imageSharingMode = vk::SharingMode::eExclusive,
+      .preTransform =     surfaceCapabilities.currentTransform,
+      .compositeAlpha =   vk::CompositeAlphaFlagBitsKHR::eOpaque,
+      .presentMode =      chooseSwapPresentMode(physicalDevice.getSurfacePresentModesKHR(surface)),
+      .clipped =          true,
+      .oldSwapchain =     nullptr
+    };
+
+    swapChain =            vk::raii::SwapchainKHR(device, swapChainCreateInfo);
+    swapChainImages =      swapChain.getImages();
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent =      extent;
+  }
+
+  vk::SurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<vk::SurfaceFormatKHR>& availableFormats) {
+    for (const auto& availableFormat : availableFormats) {
+      if (availableFormat.format == vk::Format::eB8G8R8A8Srgb && availableFormat.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear) {
+        return availableFormat;
+      }
+    }
+
+    return availableFormats[0];
+  }
+
+  vk::PresentModeKHR chooseSwapPresentMode(const std::vector<vk::PresentModeKHR>& availablePresentModes) {
+    for (const auto& availablePresentMode : availablePresentModes) {
+      if (availablePresentMode == vk::PresentModeKHR::eMailbox) {
+        return availablePresentMode;
+      }
+    }
+    return vk::PresentModeKHR::eFifo;
+  }
+
+  vk::Extent2D chooseSwapExtent(const vk::SurfaceCapabilitiesKHR& capabilities) {
+    if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
+      return capabilities.currentExtent;
+    }
+
+    int width, height;
+    glfwGetFramebufferSize(window, &width, &height);
+
+    return {
+      std::clamp<uint32_t>(width,  capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
+      std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
+    };
+  }
+
   void mainLoop() {
     while (!glfwWindowShouldClose(window)) {
       glfwPollEvents();
@@ -274,7 +348,8 @@ private:
   }
 
   void cleanup() {
-    surface = nullptr; // to avoid a SEGFAULT at DestroySurfaceKHR
+    swapChain = nullptr; // same issue
+    surface =   nullptr; // to avoid a SEGFAULT at DestroySurfaceKHR
     glfwDestroyWindow(window);
     glfwTerminate();
   }
