@@ -42,9 +42,10 @@ private:
   vk::raii::Queue                  presentQueue =   nullptr;
   vk::raii::SwapchainKHR           swapChain =      nullptr;
 
-  std::vector<vk::Image> swapChainImages;
-  vk::Format             swapChainImageFormat = vk::Format::eUndefined;
-  vk::Extent2D           swapChainExtent;
+  std::vector<vk::Image>           swapChainImages;
+  std::vector<vk::raii::ImageView> swapChainImageViews;
+  vk::Format                       swapChainImageFormat = vk::Format::eUndefined;
+  vk::Extent2D                     swapChainExtent;
 
   GLFWwindow* window = nullptr;
 
@@ -70,6 +71,7 @@ private:
     pickPhysicalDevice();
     createLogicalDevice();
     createSwapChain();
+    createImageViews();
   }
 
   void createInstance() {
@@ -339,6 +341,21 @@ private:
       std::clamp<uint32_t>(width,  capabilities.minImageExtent.width,  capabilities.maxImageExtent.width),
       std::clamp<uint32_t>(height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height)
     };
+  }
+
+  void createImageViews() {
+    swapChainImageViews.clear();
+
+    vk::ImageViewCreateInfo imageViewCreateInfo {
+      .viewType =         vk::ImageViewType::e2D,
+      .format =           swapChainImageFormat,
+      .subresourceRange = { vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1 }
+    };
+
+    for (auto image : swapChainImages) {
+      imageViewCreateInfo.image = image;
+      swapChainImageViews.emplace_back( device, imageViewCreateInfo);
+    }
   }
 
   void mainLoop() {
