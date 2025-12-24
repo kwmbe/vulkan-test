@@ -213,8 +213,8 @@ private:
       found = found && extensionIter != extensions.end();
     }
 
-    auto features                 = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
-    bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering && features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
+    auto features                 = device.template getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>();
+    bool supportsRequiredFeatures = features.template get<vk::PhysicalDeviceVulkan11Features>().shaderDrawParameters && features.template get<vk::PhysicalDeviceVulkan13Features>().dynamicRendering && features.template get<vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT>().extendedDynamicState;
 
     return isSuitable && found;
   }
@@ -257,10 +257,11 @@ private:
 
     // Create a chain of feature structures
     // old way shown here: https://docs.vulkan.org/tutorial/latest/03_Drawing_a_triangle/01_Presentation/00_Window_surface.html
-    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
-      {},                              // vk::PhysicalDeviceFeatures2
-      { .dynamicRendering = true },    // dynamic rendering from vulkan 1.3
-      { .extendedDynamicState = true } // dynamic state from the extension
+    vk::StructureChain<vk::PhysicalDeviceFeatures2, vk::PhysicalDeviceVulkan11Features, vk::PhysicalDeviceVulkan13Features, vk::PhysicalDeviceExtendedDynamicStateFeaturesEXT> featureChain = {
+      {},                               // vk::PhysicalDeviceFeatures2
+      { .shaderDrawParameters = true }, // shader drawing from vulkan 11 (not mentioned in tutorial)
+      { .dynamicRendering = true },     // dynamic rendering from vulkan 1.3
+      { .extendedDynamicState = true }  // dynamic state from the extension
     };
 
     vk::DeviceQueueCreateInfo deviceQueueCreateInfo {

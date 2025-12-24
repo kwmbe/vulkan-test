@@ -8,4 +8,4 @@ cd build
 cmake ..
 cmake --build .
 ```
-Now you can execute the application with `./HelloTriangleApplication`
+Now you can execute the application with `build/HelloTriangleApplication`
