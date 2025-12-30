@@ -1,5 +1,6 @@
 #include <vulkan/vulkan_raii.hpp>
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 #include <iostream>
 #include <stdexcept>
@@ -8,6 +9,7 @@
 #include <cstdint>   // Necessary for uint32_t
 #include <limits>    // Necessary for std::numeric_limits
 #include <algorithm> // Necessary for std::clamp
+#include <array>
 
 #include <fstream>   // for loading the shaders bytecode
 
@@ -61,6 +63,28 @@ private:
   vk::Extent2D                     swapChainExtent;
 
   GLFWwindow* window = nullptr;
+
+  struct Vertex {
+    glm::vec2 pos;
+    glm::vec3 color;
+
+    static vk::VertexInputBindingDescription getBindingDescription() {
+      return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
+    }
+
+    static std::array<vk::VertexInputAttributeDescription, 2> getAttributeDescriptions() {
+      return {
+        vk::VertexInputAttributeDescription(0, 0, vk::Format::eR32G32Sfloat,    offsetof(Vertex, pos)),
+        vk::VertexInputAttributeDescription(1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, color))
+      };
+    }
+  };
+
+  const std::vector<Vertex> vertices = {
+    {{ 0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}}
+  };
 
   std::vector<const char*> requiredDeviceExtensions = {
     vk::KHRSwapchainExtensionName,
@@ -421,7 +445,15 @@ private:
       .pDynamicStates =    dynamicStates.data()
     };
 
-    vk::PipelineVertexInputStateCreateInfo vertexInputInfo;
+    auto bindingDescription =    Vertex::getBindingDescription();
+    auto attributeDescriptions = Vertex::getAttributeDescriptions();
+
+    vk::PipelineVertexInputStateCreateInfo vertexInputInfo {
+      .vertexBindingDescriptionCount =   1,
+      .pVertexBindingDescriptions =       &bindingDescription,
+      .vertexAttributeDescriptionCount = attributeDescriptions.size(),
+      .pVertexAttributeDescriptions =    attributeDescriptions.data()
+    };
 
     vk::PipelineInputAssemblyStateCreateInfo inputAssembly{
       .topology = vk::PrimitiveTopology::eTriangleList
