@@ -589,14 +589,47 @@ private:
     buffer.bindMemory(*bufferMemory, 0);
   }
 
-  void createVertexBuffer() {
-    vk::DeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
-    createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, vertexBuffer, vertexBufferMemory);
+  void copyBuffer(vk::raii::Buffer& srcBuffer, vk::raii::Buffer& dstBuffer, vk::DeviceSize size) {
+    vk::CommandBufferAllocateInfo allocInfo {
+      .commandPool =        commandPool,
+      .level =              vk::CommandBufferLevel::ePrimary,
+      .commandBufferCount = 1
+    };
+    vk::raii::CommandBuffer cmdCopyBuffer = std::move(device.allocateCommandBuffers(allocInfo).front());
 
-    // map buffer memory into CPU accessible memory
-    void* data = vertexBufferMemory.mapMemory(0, bufferSize);
-    memcpy(data, vertices.data(), (size_t) bufferSize);
-    vertexBufferMemory.unmapMemory();
+    cmdCopyBuffer.begin(vk::CommandBufferBeginInfo{
+      .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit
+    });
+
+    cmdCopyBuffer.copyBuffer(srcBuffer, dstBuffer, vk::BufferCopy(0, 0, size));
+
+    cmdCopyBuffer.end();
+
+    // execute buffer to complete transfer
+    graphicsQueue.submit(vk::SubmitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &*cmdCopyBuffer
+      },
+      nullptr);
+    graphicsQueue.waitIdle();
+  }
+
+  void createVertexBuffer() {
+    vk::DeviceSize         bufferSize =          sizeof(vertices[0]) * vertices.size();
+    vk::raii::Buffer       stagingBuffer =       nullptr;
+    vk::raii::DeviceMemory stagingBufferMemory = nullptr;
+
+    // not sure why the tutorial does not use createBuffer after telling you to write it
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+    void* dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
+    memcpy(dataStaging, vertices.data(), (size_t) bufferSize);
+    stagingBufferMemory.unmapMemory();
+
+    // not sure why the tutorial does not use createBuffer after telling you to write it
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eVertexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal, vertexBuffer, vertexBufferMemory);
+
+    copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
   }
 
   void createCommandBuffers() {
