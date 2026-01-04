@@ -52,6 +52,8 @@ private:
   vk::raii::CommandPool                commandPool =               nullptr;
   vk::raii::Buffer                     vertexBuffer =              nullptr;
   vk::raii::DeviceMemory               vertexBufferMemory =        nullptr;
+  vk::raii::Buffer                     indexBuffer =               nullptr;
+  vk::raii::DeviceMemory               indexBufferMemory =         nullptr;
   uint32_t                             frameIndex =                0;
   std::vector<vk::raii::CommandBuffer> commandBuffers;
   std::vector<vk::raii::Semaphore>     presentCompleteSemaphores;
@@ -83,9 +85,14 @@ private:
   };
 
   const std::vector<Vertex> vertices = {
-    {{ 0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{ 0.5f,  0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.5f, 0.0f}},
+    {{ 0.5f, -0.5f}, {0.5f, 1.0f, 0.5f}},
+    {{ 0.5f,  0.5f}, {1.0f, 0.5f, 1.0f}},
+    {{-0.5f,  0.5f}, {0.5f, 0.0f, 0.5f}}
+  };
+
+  const std::vector<uint16_t> indices = {
+    0, 1, 2, 2, 3, 0
   };
 
   std::vector<const char*> requiredDeviceExtensions = {
@@ -122,6 +129,7 @@ private:
     createGraphicsPipeline();
     createCommandPool();
     createVertexBuffer();
+    createIndexBuffer();
     createCommandBuffers();
     createSyncObjects();
   }
@@ -632,6 +640,22 @@ private:
     copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
   }
 
+  void createIndexBuffer() {
+    vk::DeviceSize         bufferSize =          sizeof(indices[0]) * indices.size();
+    vk::raii::Buffer       stagingBuffer =       nullptr;
+    vk::raii::DeviceMemory stagingBufferMemory = nullptr;
+
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eTransferSrc, vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent, stagingBuffer, stagingBufferMemory);
+
+    void* dataStaging = stagingBufferMemory.mapMemory(0, bufferSize);
+    memcpy(dataStaging, indices.data(), (size_t) bufferSize);
+    stagingBufferMemory.unmapMemory();
+
+    createBuffer(bufferSize, vk::BufferUsageFlagBits::eIndexBuffer | vk::BufferUsageFlagBits::eTransferDst, vk::MemoryPropertyFlagBits::eDeviceLocal, indexBuffer, indexBufferMemory);
+
+    copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+  }
+
   void createCommandBuffers() {
     commandBuffers.clear();
 
@@ -689,9 +713,10 @@ private:
 
     // bind vertex buffers
     commandBuffer.bindVertexBuffers(0, *vertexBuffer, {0});
+    commandBuffer.bindIndexBuffer(*indexBuffer, 0, vk::IndexType::eUint16);
 
     // draw triangle
-    commandBuffer.draw(3, 1, 0, 0);
+    commandBuffer.drawIndexed(indices.size(), 1, 0, 0, 0);
 
     // stop rendering
     commandBuffer.endRendering();
